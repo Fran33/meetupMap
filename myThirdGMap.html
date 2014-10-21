@@ -1,0 +1,43 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <title>Meetup Map Mashup</title>
+    <script type="text/javascript" src="js_functions.js"></script>
+
+  </head>
+  <body onload="initialize()" onunload="GUnload()">
+    <table>
+    <tr>
+    <td>
+    <div id="map_canvas" style="width: 800px; height: 500px"></div>
+    </td>
+    <td>
+    <form>
+        Member ID: e.g. 1777904 <input type="text" size="10" maxlength="40" id="meetup-id">
+        <input type="button" value="List Groups" onclick="loadGroupsForMember(document.getElementById('meetup-id'))"> 
+    </form>
+    <span id="groups-span">
+      <select id="groups">
+      <option value="one">1</option>
+      </select>
+    </span>
+    <form>
+        <input type="button" value="Map Members of Selected Group" onclick="loadMapWithMembers()"> 
+    </form>
+    <form>
+        <input type="button" value="Load Upcoming Events for Selected Group" onclick="loadEventsForGroup()"> 
+    </form>
+    <span id="events-span">
+      <select id="events">
+      <option value="one">1</option>
+      </select>
+    </span>
+    <form>
+        <input type="button" value="Map Yes RSVPs for Selected Event" onclick="loadMapWithRSVPs()"> 
+    </form>
+    </td>
+    </tr>
+    </table>
+  </body>
+</html>

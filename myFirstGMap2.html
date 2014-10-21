@@ -1,0 +1,240 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <title>Meetup Map Mashup</title>
+
+    <script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key=ABQIAAAApu1FJP7pufT5_nOm518DSxSvWKiAWLhk_sOygIARlDHV5l8aFBTFOaqbJcIfOtEoeNFR3FrF1DJbBg&sensor=false" type="text/javascript"></script>
+    <script type="text/javascript" src="markermanager.js"></script>
+    <script type="text/javascript" src="meetupclient.js"></script>
+    <script type="text/javascript" src="jquery-1.3.2.min.js"></script>
+
+    <script type="text/javascript">
+
+    var map = null;
+    var mgr = null;
+    var geocoder = null;
+    var jsonGroupsResultsForSelection = [];
+    var jsonEventsResultsForSelection = [];
+
+    function initialize() {
+      if (GBrowserIsCompatible()) {
+        geocoder = new GClientGeocoder();
+        map = new GMap2(document.getElementById("map_canvas"));
+        var reston = new GLatLng(showAddress("20190"));
+        var zoom = 13;
+        map.setCenter(reston, zoom);
+        mgr = new MarkerManager(map);
+        map.setUIToDefault();
+      }
+    }
+
+    function showAddress(address) {
+      if (geocoder) {
+        geocoder.getLatLng(
+          address,
+          function(point) {
+            if (!point) {
+              //alert(address + " not found");
+            } else {
+              map.setCenter(point, 13);
+              //var marker = new GMarker(point);
+              //map.addOverlay(marker);
+              //marker.openInfoWindowHtml(address);
+            }
+          }
+        );
+      }
+    }
+
+    function loadMeetupMembersForGroup(id,offset,page) {
+       // offset is basically the page number of results, max of 200 per page
+       // page lets you limit the number of results per page, from 0 .. 200
+       var api = new MeetupApiClient(document.getElementById('api-key').value)
+       api.get_members({'group_id':id,'offset':offset, 'page':page} , mark_members_on_map);
+    }
+    function loadMeetupEventsForGroup(id,offset,page) {
+       // offset is basically the page number of results, max of 200 per page
+       // page lets you limit the number of results per page, from 0 .. 200
+       var api = new MeetupApiClient(document.getElementById('api-key').value)
+       api.get_events({'group_id':id,'offset':offset, 'page':page, 'order':'time'} , convert_events_to_rows);
+//       api.get_events({'group_id':id,'offset':offset, 'after':'10182009','page':page, 'order':'time'} , convert_events_to_rows);
+    }
+    function loadMeetupGroupsForMember(id,offset,page) {
+       // offset is basically the page number of results, max of 200 per page
+       // page lets you limit the number of results per page, from 0 .. 200
+       var api = new MeetupApiClient(document.getElementById('api-key').value)
+       api.get_groups({'member_id':id,'offset':offset, 'page':page, 'order':'name'} , convert_groups_to_rows);
+    }
+    function loadMeetupRSVPsForEvent(id,offset,page){
+       // offset is basically the page number of results, max of 200 per page
+       // page lets you limit the number of results per page, from 0 .. 200
+       var api = new MeetupApiClient(document.getElementById('api-key').value)
+       api.get_rsvps({'event_id':id,'offset':offset, 'page':page, 'order':'name'} , mark_rsvps_on_map);
+    }
+
+    function mark_members_on_map(json){
+       var point = null;
+       var marker = null;
+       var batch = [];
+
+       for(t in json.results) {
+              if (json.results[t].city != "Washington") {
+	              point = new GLatLng(json.results[t].lat,json.results[t].lon);
+      	        marker = new GMarker(point);
+            	  marker.value = "<a href=\"" + json.results[t].link + "\">" + json.results[t].name + "," + json.results[t].city + "</a>";
+			  createListener(point,marker);
+                    //batch.push(marker);
+	      	  map.addOverlay(marker);
+		  }
+       }
+       //mgr.addMarkers(batch,3);
+       //mgr.refresh();
+    }
+    function mark_rsvps_on_map(json){
+       var point = null;
+       var marker = null;
+       var batch = [];
+
+       for(t in json.results) {
+          if (json.results[t].response == "yes") {
+            point = new GLatLng(json.results[t].coord,json.results[t].lon);
+            marker = new GMarker(point);
+            marker.value = "<a href=\"" + json.results[t].link + "\">" + json.results[t].name + "," + json.results[t].city + "</a>";
+	      createListener(point,marker);
+            //batch.push(marker);
+	      map.addOverlay(marker);
+          }
+       }
+       //mgr.addMarkers(batch,3);
+       //mgr.refresh();
+    }
+    function createListener(point,marker) {
+       GEvent.addListener(marker, "click", function() {
+          var myHtml = "<b>" + marker.value + "</b><br/>";
+          map.openInfoWindowHtml(point,myHtml);
+       });
+    }
+
+    function convert_groups_to_rows(json) {
+       alert("compiling groups");
+       var k = jsonGroupsResultsForSelection.length;
+       var j = 0;
+       for(t in json.results) {
+          jsonGroupsResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name + '</option>';
+          j++;
+       }
+       alert("Found " + j + "=" + jsonGroupsResultsForSelection.length + " groups");
+    }
+
+    function convert_events_to_rows(json) {
+       alert("compiling events");
+       var k = jsonEventsResultsForSelection.length;
+       var j = 0;
+       for(t in json.results) {
+          jsonEventsResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name + '</option>';
+          j++;
+       }
+       alert("Found " + j + "=" + jsonEventsResultsForSelection.length + " events");
+    }
+
+    function loadMapWithMembers() {
+        var selectObject = document.getElementById('groups');
+        alert("selected " + selectObject.options[selectObject.selectedIndex].value + " for map");
+        var id = 194793;
+        id = selectObject.options[selectObject.selectedIndex].value;
+        map.clearOverlays();
+        //mgr.clearMarkers();
+	  for(var i = 0; i < 2000/200; i++) {
+	        loadMeetupMembersForGroup(id,i,200);
+	  }
+    }
+
+    function loadMapWithRSVPs() {
+        var selectObject = document.getElementById('events');
+        alert("selected " + selectObject.options[selectObject.selectedIndex].value + " for map");
+        var id = selectObject.options[selectObject.selectedIndex].value;
+        map.clearOverlays();
+        //mgr.clearMarkers();
+	  for(var i = 0; i < 2000/200; i++) {
+	        loadMeetupRSVPsForEvent(id,i,200);
+	  }
+    }
+
+    function loadGroupsForMember(elem) {
+       alert("loading groups for member " + elem.value);
+       jsonGroupsResultsForSelection.splice(0); // delete everything after the 0th element
+       jsonGroupsResultsForSelection.pop(); // delete the last element
+       loadMeetupGroupsForMember(elem.value,0,200);
+       document.getElementById('groups-span').innerHTML="<select id=\"groups\"></select>";
+       alert("loading " + jsonGroupsResultsForSelection.length + " groups for " + elem.value);
+       for(t in jsonGroupsResultsForSelection ) {
+          var x = document.getElementById('groups-span').innerHTML;
+          x = x.replace("</select>", jsonGroupsResultsForSelection[t] + "</select>");
+          document.getElementById('groups-span').innerHTML = x;
+       }
+       document.getElementById('groups-span').innerHTML+="</select>";
+    }
+
+    function loadEventsForGroup(elem) {
+       var selectObject = document.getElementById('groups');
+       var id = selectObject.options[selectObject.selectedIndex].value;
+       alert("retrieving events for " + id);
+
+       jsonEventsResultsForSelection.splice(0); // delete everything after the 0th element
+       jsonEventsResultsForSelection.pop(); // delete the last element
+       loadMeetupEventsForGroup(id,0,200);
+       alert("making select list of events");
+       document.getElementById('events-span').innerHTML="<select id=\"events\"></select>";
+       for(t in jsonEventsResultsForSelection) {
+          var x = document.getElementById('events-span').innerHTML;
+          x = x.replace("</select>", jsonEventsResultsForSelection[t] + "</select>");
+          document.getElementById('events-span').innerHTML = x;
+       }
+       document.getElementById('events-span').innerHTML+="</select>";
+    }
+
+  </script>
+  </head>
+  <body onload="" onunload="GUnload()">
+    <table>
+    <tr>
+    <td>
+    <div id="map_canvas" style="width: 800px; height: 500px"></div>
+    </td>
+    <td>
+    <form>
+        API key: <input type="text" size="10" maxlength="40" id="api-key">
+        or <a href="http://www.meetup.com/meetup_api/key/">login to meetup</a> to find your alphanumeric API key
+        <br>
+        Member ID: <input type="text" size="10" maxlength="40" id="meetup-id">
+        or <a href="http://www.meetup.com/profile/">login to meetup</a> to find your numeric member id
+        <br>
+        <input type="button" value="List Groups" onclick="loadGroupsForMember(document.getElementById('meetup-id'))"> 
+    </form>
+    <span id="groups-span">
+      <select id="groups">
+      <option value="one">1</option>
+      </select>
+    </span>
+    <form>
+        <input type="button" value="Map Members of Selected Group" onclick="loadMapWithMembers()"> 
+    </form>
+    <p>
+    <form>
+        <input type="button" value="Load Upcoming Events for Selected Group" onclick="loadEventsForGroup()"> 
+    </form>
+    <span id="events-span">
+      <select id="events">
+      <option value="one">1</option>
+      </select>
+    </span>
+    <form>
+        <input type="button" value="Map Yes RSVPs for Selected Event" onclick="loadMapWithRSVPs()"> 
+    </form>
+    </td>
+    </tr>
+    </table>
+  </body>
+  <script type="text/javascript"> initialize() </script>
+</html>

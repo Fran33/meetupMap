@@ -1,0 +1,464 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <title>Meetup Map Mashup</title>
+
+    <script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key=ABQIAAAApu1FJP7pufT5_nOm518DSxSvWKiAWLhk_sOygIARlDHV5l8aFBTFOaqbJcIfOtEoeNFR3FrF1DJbBg&sensor=false" type="text/javascript"></script>
+    <script type="text/javascript" src="markermanager.js"></script>
+    <script type="text/javascript" src="meetupclient.js"></script>
+    <script type="text/javascript" src="jquery-1.3.2.min.js"></script>
+
+    <script type="text/javascript">
+
+    var map = null;
+    var mgr = null;
+    var geocoder = null;
+    // share memory of individual API results in array visible to both AJAX callback and HTML update method
+    // this memory is not needed for sharing between AJAX and HTML
+    // but this memory can help when HTML is only view and we need to maintain the full data set accumulated from multiple query pages
+    var jsonGroupsResultsForSelection = [];
+    var jsonMembersResultsForSelection = [];
+    var jsonEventsResultsForSelection = [];
+    var jsonRSVPsResultsForSelection = [];
+    var PAGE_SIZE = 200;
+    // maintain map memory for deduplication
+    var pointToMarkerDictionary = new Array();
+    var debug = 1;
+
+    function initialize() {
+      if (GBrowserIsCompatible()) {
+        geocoder = new GClientGeocoder();
+        map = new GMap2(document.getElementById("map_canvas"));
+        var reston = new GLatLng(showAddress("20190"));
+        var zoom = 13;
+        map.setCenter(reston, zoom);
+        mgr = new MarkerManager(map);
+        map.setUIToDefault();
+      }
+    }
+
+    function showAddress(address) {
+      if (geocoder) {
+        geocoder.getLatLng(
+          address,
+          function(point) {
+            if (!point) {
+              //alert(address + " not found");
+            } else {
+              map.setCenter(point, 13);
+              //var marker = new GMarker(point);
+              //map.addOverlay(marker);
+              //marker.openInfoWindowHtml(address);
+            }
+          }
+        );
+      }
+    }
+
+    <!--   methods for calling meetup api with AJAX functionality, javascript client --------------------------------->
+    // offset is basically the page number of results, max of 200 per page
+    // page lets you limit the number of results per page, from 0 .. 200
+    function mapMeetupMembersForGroup(id,offset,page) {
+       var api = new MeetupApiClient(document.getElementById('api-key').value);
+       api.get_members({'group_id':id,'offset':offset, 'page':page, 'order':'name'} , mark_members_on_map);
+    }
+    function mapMeetupRSVPsForEvent(id,offset,page){
+       var api = new MeetupApiClient(document.getElementById('api-key').value);
+       api.get_rsvps({'event_id':id,'offset':offset, 'page':page, 'order':'name'} , mark_rsvps_on_map);
+    }
+    function loadMeetupMembersForGroup(id,offset,page) {
+       var api = new MeetupApiClient(document.getElementById('api-key').value);
+       api.get_members({'group_id':id,'offset':offset, 'page':page, 'order':'name'} , convert_members_to_rows);
+    }
+    function loadMeetupEventsForGroup(id,offset,page) {
+       var api = new MeetupApiClient(document.getElementById('api-key').value);
+       api.get_events({'group_id':id,'offset':offset, 'page':page, 'order':'time'} , convert_events_to_rows);
+    }
+    function loadMeetupGroupsForMember(id,offset,page) {
+       var api = new MeetupApiClient(document.getElementById('api-key').value);
+       api.get_groups({'member_id':id,'offset':offset, 'page':page, 'order':'name'} , convert_groups_to_rows);
+    }
+    function loadMeetupRSVPsForEvent(id,offset,page) {
+       var api = new MeetupApiClient(document.getElementById('api-key').value);
+       api.get_rsvps({'event_id':id,'offset':offset, 'page':page, 'order':'name'} , convert_rsvps_to_rows);
+    }
+    
+    <!--   supporting call-back methods for calling meetup api ---------------------------------------------->
+    <!--   1. AJAX call-back methods for calling meetup api ---------------------------------------------------->
+    
+    <!--   supporting map methods for de-duplicating data ------------------->
+    function recordMarker(marker) {
+        pointToMarkerDictionary[marker.getLatLng()] = marker;
+    }
+    
+    function findMarker(marker){
+        return pointToMarkerDictionary[marker.getLatLng()];
+    }
+    
+    <!--   map call-back methods for calling meetup api ----------------------------------------------------->
+    <!--   1. AJAX call-back methods for calling meetup api ---------------------------------------------------->
+    <!--   need call-back to handle additional pages, because can't wait for page to determine if next page is needed-->
+    function mark_members_on_map(json){
+       var point = null;
+       var marker = null;
+       var batch = [];
+       var count = 0;
+       
+       for(t in json.results) {
+        //if (json.results[t].city != "Washington") {
+                point = new GLatLng(json.results[t].lat,json.results[t].lon);
+                marker = findMarker(new GMarker(point));
+                if(marker == null) {
+                    marker = new GMarker(point);
+                    marker.value = "<a href=\"" + json.results[t].link + "\">" 
+                                                + json.results[t].name + "," + json.results[t].city + "," + json.results[t].zip + "</a>";
+                    createListener(point,marker);
+                    //batch.push(marker);
+                    map.addOverlay(marker);
+                    count++;
+                    recordMarker(marker);
+                } else {
+                    // get market of existing point, and add to value
+                    marker.value += "<br><a href=\"" + json.results[t].link + "\">" 
+                                                     + json.results[t].name + "," + json.results[t].city + "," + json.results[t].zip + "</a>";
+                    count++;
+                }
+		//}
+       }
+       if (debug == 1) loadStatus("mapped " + count + " members");
+       //mgr.addMarkers(batch,3);
+       //mgr.refresh();
+       
+       convert_members_to_rows(json);
+       // load rows in html
+    }
+    
+    function mark_rsvps_on_map(json){
+       var point = null;
+       var marker = null;
+       var batch = [];
+       var count = 0;
+       
+       for(t in json.results) {
+          if (json.results[t].response == "yes") {
+            point = new GLatLng(json.results[t].coord,json.results[t].lon);
+            marker = new GMarker(point);
+            marker.value = "<a href=\"" + json.results[t].link + "\">" + json.results[t].name + "," + json.results[t].city + "</a>";
+	        createListener(point,marker);
+            //batch.push(marker);
+	        map.addOverlay(marker);
+            count++;
+          }
+       }
+       if (debug == 1) loadStatus("mapped " + count + " yes rsvp's");
+       //mgr.addMarkers(batch,3);
+       //mgr.refresh();
+       waitingOnAPI = 0;
+    }
+    
+    function createListener(point,marker) {
+       GEvent.addListener(marker, "click", function() {
+          var myHtml = "<b>" + marker.value + "</b><br/>";
+          map.openInfoWindowHtml(point,myHtml);
+       });
+    }
+
+    <!--   supporting call-back methods for calling meetup api ---------------------------------------------->
+    <!--   1. AJAX call-back methods for calling meetup api ---------------------------------------------------->
+    
+    function clearSelectionList(name) {
+        if (name == "groups") {
+            jsonGroupsResultsForSelection.splice(0); // delete everything after the 0th element
+            jsonGroupsResultsForSelection.pop(); // delete the last element
+        }
+        if (name == "members") {
+            jsonMembersResultsForSelection.splice(0); // delete everything after the 0th element
+            jsonMembersResultsForSelection.pop(); // delete the last element
+        }
+        if (name == "events") {
+            jsonEventsResultsForSelection.splice(0); // delete everything after the 0th element
+            jsonEventsResultsForSelection.pop(); // delete the last element
+        }
+        if (name == "rsvps") {
+            jsonRSVPsResultsForSelection.splice(0); // delete everything after the 0th element
+            jsonRSVPsResultsForSelection.pop(); // delete the last element
+        }
+    }
+       
+    function convert_groups_to_rows(json) {
+       var k = jsonGroupsResultsForSelection.length;
+       var j = 0;
+       for(t in json.results) {
+          if (debug == 1)
+            jsonGroupsResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name + ' = ' + json.results[t].id + '</option>';
+          else
+            jsonGroupsResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name + '</option>';
+          j++;
+       }
+       // if groups are not publicly listed, json.meta does not exist...
+       loadStatus("Loaded " + jsonGroupsResultsForSelection.length + " of " + json.meta.total_count + " groups");
+       loadGroupsSelection(jsonGroupsResultsForSelection); // from AJAX call-back, call method to update HTML
+
+       if (0 && jsonGroupsResultsForSelection.length < json.meta.total_count) {
+            var offset = (jsonGroupsResultsForSelection.length / PAGE_SIZE);
+            loadGroupsForMember(offset);
+       }
+    }
+
+    function convert_events_to_rows(json) {
+       var k = jsonEventsResultsForSelection.length;
+       var j = 0;
+       for(t in json.results) {
+          if (debug == 1)
+            jsonEventsResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name + ' = ' + json.results[t].id + '</option>';
+          else
+            jsonEventsResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name + '</option>';
+          j++;
+       }
+       loadStatus("Loaded " + jsonEventsResultsForSelection.length + " of " + json.meta.total_count + " events");
+       loadEventsSelection(jsonEventsResultsForSelection); // from AJAX call-back, call method to update HTML
+
+       if (0 && jsonEventsResultsForSelection.length < json.meta.total_count) {
+            var offset = (jsonEventsResultsForSelection.length / PAGE_SIZE);
+            loadEventsForGroup(offset);
+       }
+    }
+
+    function convert_members_to_rows(json) {
+       var k = jsonMembersResultsForSelection.length;
+       var j = 0;
+       for(t in json.results) {
+          if (debug == 1)
+            jsonMembersResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name 
+                                                                                                  + ' = ' + json.results[t].id 
+                                                                                                  + ' : ' + json.results[t].lat + '--' + json.results[t].lon
+                                                                                                  + '</option>';
+          else
+            jsonMembersResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name + '</option>';
+          j++;
+       }
+       loadStatus("Loaded " + jsonMembersResultsForSelection.length + " of " + json.meta.total_count + " members");
+       loadMembersSelection(jsonMembersResultsForSelection); // from AJAX call-back, call method to update HTML
+       
+       // now that page has been processed, need to see if additional pages need to be requested
+       // offset = current total divided by page size = total number of pages so far
+       //          minus one for zero-based count
+       //          plus one to ask for next page
+       if (0 && jsonMembersResultsForSelection.length < json.meta.total_count) {
+            var offset = (jsonMembersResultsForSelection.length / PAGE_SIZE);
+            loadMembersForGroup(offset);
+       }
+    }
+    
+    function convert_rsvps_to_rows(json) {
+       var k = jsonRSVPsResultsForSelection.length;
+       var j = 0;
+       for(t in json.results) {
+          if (debug == 1)
+            jsonRSVPsResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name 
+                                                                                                  + ' = ' + json.results[t].id 
+                                                                                                  + ' : ' + json.results[t].coord + '--' + json.results[t].lon
+                                                                                                  + '</option>';
+          else
+            jsonRSVPsResultsForSelection[k++] = '<option value=\"' + json.results[t].id + '\">' + json.results[t].name + '</option>';
+          j++;
+       }
+       loadStatus("Loaded " + jsonRSVPsResultsForSelection.length + " of " + json.meta.total_count + " Yes rsvp's");
+       loadRSVPsSelection(jsonRSVPsResultsForSelection); // from AJAX call-back, call method to update HTML
+
+       if (0 && jsonRSVPsResultsForSelection.length < json.meta.total_count) {
+            var offset = (jsonRSVPsResultsForSelection.length / PAGE_SIZE);
+            loadRSVPsForEvent(offset);
+       }
+    }
+
+    
+    <!--   2. methods for initiating AJAX request from html   ----------------------------------------------------------->
+    
+    function loadMapWithMembers() {
+        var selectObject = document.getElementById('groups');
+        var id = selectObject.options[selectObject.selectedIndex].value;
+        map.clearOverlays();
+        //mgr.clearMarkers();
+        //for(var offset = 0; offset < 2000/200; offset++) {
+            var offset = 0
+            mapMeetupMembersForGroup(id,offset,PAGE_SIZE);
+            loadMembersSelection();
+        //}
+    }
+    
+    function loadMapWithRSVPs() {
+        var selectObject = document.getElementById('events');
+        var id = selectObject.options[selectObject.selectedIndex].value;
+        map.clearOverlays();
+        //mgr.clearMarkers();
+        //for(var offset = 0; offset < 2000/200; offset++) {
+            var offset = 0
+	        mapMeetupRSVPsForEvent(id,offset,PAGE_SIZE);
+            loadRSVPsSelection();
+        //}
+    }
+    
+    function loadGroupsForMember(elem,offset) {
+        if (offset == 0)
+            clearSelectionList("groups");
+        // if there are multiple pages, then they can either be shown all as one list, or as individually retrieved pages
+        // odds are pages are not gonna change often
+        // so just store entire set in array, and accumulate as needed, and display as visible
+        loadMeetupGroupsForMember(elem.value,offset,PAGE_SIZE);
+       
+       
+        // per ajax "asynchronous" magic, this method ends with the request sent
+        // this method now exits, and the browser is free to respond to other events
+        // once the "asynchronous" request is answered, and data received, the callback method, which was given to the AJAX routine (the meetup api call), does the rest,
+        // so the browser can handle multiple requests in rapid sequence, by not waiting for each one to come back before proceeding to the next
+    }
+
+    function loadMembersForGroup(offset) {
+        if (offset == 0)
+            clearSelectionList("members");
+            
+        loadStatus("loading members page " + offset);
+        
+        // method called by HTML to answer user request
+        // method also called by AJAX-call-back to support user request with additional pages of results
+        // that way this is the only mehtod that formally calls the api wrapper function
+        var selectObject = document.getElementById('groups');
+        var id = selectObject.options[selectObject.selectedIndex].value;  
+
+        // there may be several pages of results
+        // so need to issue request, then 
+        // ... well, cannot predict when page will come, and want to keep pages in order
+        // ... so need separate button for supplementary request?
+        loadMeetupMembersForGroup(id,offset,PAGE_SIZE);
+    }
+
+    function loadEventsForGroup(offset) {
+        if (offset == 0)
+            clearSelectionList("events");
+        var selectObject = document.getElementById('groups');
+        var id = selectObject.options[selectObject.selectedIndex].value;
+
+        loadMeetupEventsForGroup(id,offset,PAGE_SIZE);
+    }
+    
+    function loadRSVPsForEvent() {
+        if (offset == 0)
+            clearSelectionList("rsvps");
+        var selectObject = document.getElementById('events');
+        var id = selectObject.options[selectObject.selectedIndex].value;
+       
+        loadMeetupRSVPsForEvent(id,offset,PAGE_SIZE);
+    }
+
+    <!--   3. methods for AJAX call-back to write back to html   ----------------------------------------------------------->
+    function loadGroupsSelection() {
+       document.getElementById('groups-span').innerHTML="<select id=\"groups\"></select>";
+       for(t in jsonGroupsResultsForSelection ) {
+          var x = document.getElementById('groups-span').innerHTML;
+          x = x.replace("</select>", jsonGroupsResultsForSelection[t] + "</select>");
+          document.getElementById('groups-span').innerHTML = x;
+       }
+       document.getElementById('groups-span').innerHTML+="</select>";
+    }
+    
+    function loadMembersSelection() {
+        document.getElementById('members-span').innerHTML="<select id=\"members\"></select>";
+        for(t in jsonMembersResultsForSelection) {
+            var x = document.getElementById('members-span').innerHTML;
+            x = x.replace("</select>", jsonMembersResultsForSelection[t] + "</select>");
+            document.getElementById('members-span').innerHTML = x;
+        }
+        document.getElementById('members-span').innerHTML+="</select>";
+    }
+    
+    function loadEventsSelection() {       
+       document.getElementById('events-span').innerHTML="<select id=\"events\"></select>";
+       for(t in jsonEventsResultsForSelection) {
+          var x = document.getElementById('events-span').innerHTML;
+          x = x.replace("</select>", jsonEventsResultsForSelection[t] + "</select>");
+          document.getElementById('events-span').innerHTML = x;
+       }
+       document.getElementById('events-span').innerHTML+="</select>";
+    }
+    
+    function loadRSVPsSelection() {       
+       document.getElementById('rsvps-span').innerHTML="<select id=\"rsvps\"></select>";
+       for(t in jsonRSVPsResultsForSelection) {
+          var x = document.getElementById('rsvps-span').innerHTML;
+          x = x.replace("</select>", jsonRSVPsResultsForSelection[t] + "</select>");
+          document.getElementById('rsvps-span').innerHTML = x;
+       }
+       document.getElementById('rsvps-span').innerHTML+="</select>";
+    }
+
+    <!-- helper function -->
+    function loadStatus(text) {
+        if (debug == 1) document.getElementById('status-span').innerHTML+="<br>" + text;
+    }
+
+
+  </script>
+  </head>
+  <body onload="" onunload="GUnload()">
+    <table>
+    <tr>
+    <td>
+    <div id="map_canvas" style="width: 800px; height: 500px"></div>
+    </td>
+    <td>
+    Status: 
+    <span id="status-span">
+    </span>
+    <form>
+        API key: <input type="text" size="10" maxlength="40" id="api-key">
+        or <a href="http://www.meetup.com/meetup_api/key/">login to meetup</a> to find your alphanumeric API key
+        <br>
+        Member ID: <input type="text" size="10" maxlength="40" id="meetup-id" value="1777904">
+        or <a href="http://www.meetup.com/profile/">login to meetup</a> to find your numeric member id
+        <br>
+        <input type="button" value="List Groups" onclick="loadGroupsForMember(document.getElementById('meetup-id'),0)"> 
+    </form>
+    <span id="groups-span">
+      <select id="groups">
+      <option value="zero">0</option>
+      </select>
+    </span>
+    <form>
+        <input type="button" value="Load Members of Selected Group" onclick="loadMembersForGroup(0)"> 
+    </form>
+    <span id="members-span">
+      <select id="members">
+      <option value="zero">0</option>
+      </select>
+    </span>
+    <form>
+        <input type="button" value="Map Members of Selected Group" onclick="loadMapWithMembers()"> 
+    </form>
+    <p>
+    <form>
+        <input type="button" value="Load Upcoming Events for Selected Group" onclick="loadEventsForGroup(0)"> 
+    </form>
+    <span id="events-span">
+      <select id="events">
+      <option value="zero">0</option>
+      </select>
+    </span>
+    <form>
+        <input type="button" value="Load Yes RSVPs of Selected Event" onclick="loadRSVPsForEvent(0)"> 
+    </form>
+    <span id="rsvps-span">
+      <select id="rsvps">
+      <option value="zero">0</option>
+      </select>
+    </span>
+    <form>
+        <input type="button" value="Map Yes RSVPs for Selected Event" onclick="loadMapWithRSVPs()"> 
+    </form>
+    </td>
+    </tr>
+    </table>
+  </body>
+  <script type="text/javascript"> initialize() </script>
+</html>

@@ -1,0 +1,68 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <title>Hack-A-Thon</title>
+
+    <script type="text/javascript" src="meetupclient.js"></script>
+    <script type="text/javascript" src="js_functions.js"></script>
+    <script type="text/javascript" src="jquery-1.3.2.min.js"></script>
+    <script type="text/javascript" src="jqueryHackAThon.js"></script>
+    <!--
+    mission : retrieve rsvp list for dcjquery group event
+              retrieve rsvp list for dev op group event
+              put them into a single set, to remove duplicates
+              display set as list of links to member profiles
+              1st getRSVPsForEvent() just needs the event id, needs to store member id results
+                set at $('#rsvpsEventNum1-span').appendTo(table of member id);
+              2nd getRSVPsForEvent() just needs the event id, needs to store member id results
+                set at $('#rsvpsEventNum2-span').appendTo(table of member id);
+              consolidateRSVPsAndDisplay() just needs to use both sets of stored member id and display unique values
+                set at $('#rsvpsEventBoth-span').appendTo(table of unique member id);
+    -->
+  </head>
+  <body onload="" onunload="">
+    <table border="2">
+    <tr>
+    <td>
+    Status: 
+    <span id="status-span">
+    </span>
+    <form>
+        API key: <input type="text" size="10" maxlength="40" id="api-key" value="3b7912140787aed45272d5764c64">
+        or <a href="http://www.meetup.com/meetup_api/key/">login to meetup</a> to find your alphanumeric API key
+        <br>
+        Member ID: <input type="text" size="10" maxlength="40" id="meetup-id" value="1777904">
+        or <input type="button" value="Retrieve Member ID for API key" onclick="retrieveMemberID()"> 
+    </form>
+    <span id="hack-span">
+    <form>
+        <input type="button" value="Get RSVPs for first event" onclick="getRSVPsForEventNum1()"> 
+        <input type="text" id="eventIDNum1" value="35250372">
+        <br>
+        <input type="button" value="Get RSVPs for second event" onclick="getRSVPsForEventNum2()"> 
+        <input type="text" id="eventIDNum2" value="72039822">
+        <br>
+        <input type="button" value="Display Consolidated List of RSVPs" onclick="consolidateRSVPsAndDisplay()"> 
+    </form>
+    </span>
+    </td>
+    </tr>
+    </table>
+    <span id="rsvpsEventNum1-span">
+    <table border=1>
+    <tr><td>Member 1</td></tr>
+    </table>
+    </span>
+    <span id="rsvpsEventNum2-span">
+    <table border=1>
+    <tr><td>Member A</td></tr>
+    </table>
+    </span>
+    <span id="rsvpsEventBoth-span">
+    <table border=1>
+    <tr><td>Member A1</td></tr>
+    </table>
+    </span>
+  </body>
+</html>
