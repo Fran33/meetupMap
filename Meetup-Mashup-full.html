@@ -31,7 +31,7 @@
         geocoder = new GClientGeocoder();
         map = new GMap2(document.getElementById("map_canvas"));
         var reston = new GLatLng(showAddress("20190"));
-        var zoom = 13;
+        var zoom = 20;
         map.setCenter(reston, zoom);
         mgr = new MarkerManager(map);
         map.setUIToDefault();
